@@ -1,0 +1,40 @@
+[project]
+name = "yale-slurm-utils"
+version = "0.1.0"
+description = "Beautifully formatted, real-time SLURM stats for the Yale Bouchet cluster (and any SLURM cluster)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Yale SLURM Utils contributors" }]
+keywords = ["slurm", "hpc", "gpu", "rich", "tui", "yale", "bouchet"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Monitoring",
+]
+dependencies = [
+    "rich>=13.7",
+    "typer>=0.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/ycrc/yale-slurm-utils"
+Documentation = "https://docs.ycrc.yale.edu/clusters/bouchet/"
+
+[project.scripts]
+ysu = "yale_slurm_utils.cli:app"
+yale-slurm = "yale_slurm_utils.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/yale_slurm_utils"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
