@@ -54,22 +54,42 @@ ysu log             # persistent log of job start/finish events
   i.e. a Bouchet login node.
 - Python ≥ 3.10.
 
-## Install / run with `uv`
+## Install once, use anywhere (recommended on HPC)
 
-The fastest path — no install, run straight from the repo:
+On a cluster your home directory is shared across every login and compute node,
+so installing `ysu` into `~/.local/bin` makes it available everywhere — from any
+directory, with no virtual environment to activate first. Just:
+
+```bash
+./install.sh            # from a checkout of this repo
+# then, from anywhere:
+ysu free
+```
+
+`install.sh` is self-locating (run it from any directory), builds the package
+into its own isolated environment via `uv tool install`, and ensures
+`~/.local/bin` is on your `PATH`. Re-run it any time to upgrade after pulling
+new changes — it replaces any previous (or broken) install.
+
+Under the hood it is just:
+
+```bash
+uv tool install --force /path/to/yale-slurm-utils
+uv tool update-shell    # adds ~/.local/bin to PATH if needed
+```
+
+> If `ysu` reports a `bad interpreter` error, the tool's isolated Python was
+> pruned (common on HPC scratch/cache cleanups). Just re-run `./install.sh` to
+> rebuild it.
+
+## Run with `uv` (no install)
+
+The fastest path — run straight from the repo without installing anything:
 
 ```bash
 uv run ysu                       # overview
 uv run ysu gpus --free
 uv run ysu watch --partition gpu_h200
-```
-
-Install it as a tool so `ysu` is always on your `PATH`:
-
-```bash
-uv tool install .                # from a checkout
-# then:
-ysu watch
 ```
 
 Or add it to a project:
