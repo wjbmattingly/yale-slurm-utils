@@ -83,6 +83,22 @@ def current_user() -> str:
         return os.environ.get("USER", "")
 
 
+def exec_salloc(args: list[str]) -> None:  # pragma: no cover - replaces process
+    """Launch an interactive ``salloc`` allocation.
+
+    This *replaces* the current process (``execvp``) so the resulting
+    interactive shell behaves exactly as if the user had typed ``salloc ...``
+    themselves — job control, the terminal and Ctrl-C all work natively.
+    Therefore this never returns on success.
+    """
+    if shutil.which("salloc") is None:
+        raise SlurmError(
+            "`salloc` was not found on PATH. Run this on a cluster login node "
+            "with the SLURM client tools installed (e.g. a Bouchet login node)."
+        )
+    os.execvp("salloc", ["salloc", *args])
+
+
 def _format(fields: list[str]) -> str:
     return ",".join(f"{name}:{_SEP}" for name in fields)
 

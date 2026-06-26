@@ -12,6 +12,7 @@ from rich.table import Table
 from rich.text import Text
 
 from . import theme
+from .alloc import GpuOption, GpuOptions, ResolvedRequest
 from .events import JobEvent
 from .models import GpuClass, Job, Partition
 from .parsing import humanize_mb, humanize_seconds
@@ -344,6 +345,129 @@ def jobs_detail(jobs: list[Job], now: datetime | None = None) -> RenderableType:
     if not jobs:
         return Panel(Text("No jobs found.", style="dim"), border_style="grey37")
     return Group(*[job_panel(job, now) for job in jobs])
+
+
+# --------------------------------------------------------------------------- #
+# Allocations (ysu grab)
+# --------------------------------------------------------------------------- #
+def _grab_command(option_partition: str, gpu_type: str) -> Text:
+    cmd = Text("ysu grab", style=theme.YALE_BLUE_BRIGHT)
+    cmd.append(f" -g {gpu_type}", style="cyan")
+    cmd.append(f" -p {option_partition}", style="cyan")
+    return cmd
+
+
+def alloc_options_table(options: GpuOptions) -> Table:
+    """Every allocatable (partition, GPU type) pairing + how to grab it."""
+    table = Table(
+        title="Allocatable GPUs",
+        title_style="bold",
+        header_style="bold white",
+        border_style="grey37",
+        expand=True,
+        row_styles=["", "on grey11"],
+    )
+    table.add_column("Partition", style="bold", no_wrap=True)
+    table.add_column("GPU type", no_wrap=True)
+    table.add_column("Availability", justify="left")
+    table.add_column("Free", justify="right", no_wrap=True)
+    table.add_column("Total", justify="right", no_wrap=True)
+    table.add_column("Grab it with", no_wrap=True)
+
+    items = sorted(options.items, key=lambda it: (-it.free, it.partition, it.gpu_type))
+    if not items:
+        table.add_row(Text("No GPUs found on this cluster.", style="dim"), "", "", "", "", "")
+        return table
+
+    for it in items:
+        bar = Text()
+        bar.append(theme.usage_bar(it.total - it.free, it.total, width=16))
+        free_text = Text(str(it.free), style=theme.availability_style(it.free, it.total))
+        table.add_row(
+            it.partition,
+            Text(it.gpu_type, style=theme.gpu_color(it.gpu_type)),
+            bar,
+            free_text,
+            str(it.total),
+            _grab_command(it.partition, it.gpu_type),
+        )
+    return table
+
+
+def free_gpu_menu(items: list[GpuOption], title: str = "Free GPUs you can grab") -> Table:
+    """A numbered menu of free (partition, GPU type) options to pick from."""
+    table = Table(
+        title=title,
+        title_style="bold",
+        header_style="bold white",
+        border_style="grey37",
+        expand=True,
+        row_styles=["", "on grey11"],
+    )
+    table.add_column("#", justify="right", style="bold", no_wrap=True)
+    table.add_column("Partition", style="bold", no_wrap=True)
+    table.add_column("GPU type", no_wrap=True)
+    table.add_column("Free", justify="right", no_wrap=True)
+    table.add_column("Availability", justify="left")
+
+    for i, it in enumerate(items, start=1):
+        bar = theme.usage_bar(it.total - it.free, it.total, width=16)
+        table.add_row(
+            str(i),
+            it.partition,
+            Text(it.gpu_type, style=theme.gpu_color(it.gpu_type)),
+            Text(str(it.free), style=theme.availability_style(it.free, it.total)),
+            bar,
+        )
+    return table
+
+
+def alloc_suggestions(message: str, options: GpuOptions) -> RenderableType:
+    """An error message paired with the real configurations to choose from."""
+    error = Text()
+    error.append("✗ ", style="bold red")
+    error.append(message, style="red")
+    body: list[RenderableType] = [error, Text()]
+    if options:
+        body.append(alloc_options_table(options))
+    return Group(*body)
+
+
+def alloc_preview(resolved: ResolvedRequest, args: list[str]) -> Panel:
+    """Show the exact ``salloc`` command and a plain-English summary."""
+    grid = Table.grid(padding=(0, 1))
+    grid.add_column(style="dim", justify="right", no_wrap=True)
+    grid.add_column(overflow="fold")
+
+    gpu_label = Text()
+    if resolved.gpu_type:
+        gpu_label.append(f"{resolved.count}× ", style="bold")
+        gpu_label.append(resolved.gpu_type, style=theme.gpu_color(resolved.gpu_type))
+    else:
+        gpu_label.append(f"{resolved.count}× ", style="bold")
+        gpu_label.append("any GPU", style="bold green")
+    grid.add_row("GPUs", gpu_label)
+
+    part = Text(resolved.partition_arg, style="cyan")
+    if resolved.interactive_only:
+        part.append("  (interactive/devel — use -a for all)", style="dim italic")
+    elif resolved.any_partition and len(resolved.partitions) > 1:
+        part.append("  (SLURM picks the first free)", style="dim italic")
+    grid.add_row("Partition", part)
+    grid.add_row("CPUs", f"{resolved.cpus} per task")
+    grid.add_row("Memory", "all on node" if resolved.mem == "0" else resolved.mem)
+    grid.add_row("Wall time", resolved.time)
+    if resolved.account:
+        grid.add_row("Account", resolved.account)
+
+    command = Text("salloc " + " ".join(args), style="bold white")
+    body = Group(grid, Text(), Text("Command:", style="dim"), command)
+    return Panel(
+        body,
+        title=Text("Interactive GPU allocation", style="bold"),
+        title_align="left",
+        border_style=theme.YALE_BLUE_BRIGHT,
+    )
 
 
 # --------------------------------------------------------------------------- #

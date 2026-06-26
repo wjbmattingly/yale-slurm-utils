@@ -12,6 +12,8 @@ ysu gpus            # GPU availability per partition & type
 ysu gpus --free     # only the free GPUs
 ysu gpus --users    # who is using which GPUs
 ysu free            # shortcut for the free GPUs
+ysu grab            # grab an interactive GPU via salloc (any free GPU)
+ysu grab --list     # see every GPU config you could ask for
 ysu partitions      # partition breakdown (nodes / CPU / memory / GPUs)
 ysu list-partitions # just the partition names
 ysu jobs            # your jobs: GPUs, source dir, log files, time left
@@ -34,6 +36,10 @@ ysu log             # persistent log of job start/finish events
 - **Real-time watch** — a full-screen live dashboard that polls SLURM on an
   interval, **rings the terminal bell** when one of your jobs starts or finishes,
   and keeps a timestamped event log.
+- **Grab a GPU** — `ysu grab` wraps `salloc` to drop you into an interactive
+  GPU session. By default it grabs **any** free GPU; narrow it with `-g h200`,
+  `-n 2`, `-t 2h`, `-m 64G`. Mistype a GPU type or partition and it tells you
+  the real options (and suggests the closest match) instead of failing cryptically.
 - **Filter anything** — every command accepts `--partition/-p`, e.g.
   `--partition gpu_h200`.
 
@@ -124,6 +130,64 @@ Disable the bell while watching:
 ```bash
 ysu watch --no-bell
 ```
+
+## Grab a GPU (`ysu grab`)
+
+`ysu grab` builds and runs an interactive `salloc` for you, with validation and
+helpful suggestions. The default just grabs **any** free GPU:
+
+```bash
+ysu grab                              # any free GPU · 6h · 8 CPUs · 32G
+ysu grab --free                       # list the free GPUs and pick one
+ysu grab -g h200 -n 2                 # two H200s
+ysu grab -p gpu_devel -t 2h -m 64G    # pin a partition, 2h, 64G RAM
+ysu grab --list                       # show every allocatable GPU config
+ysu grab --dry-run                    # print the salloc command, run nothing
+```
+
+### Pick from what's free
+
+`ysu grab --free` shows the GPUs that are free **right now** on the interactive
+(`devel`) partitions and prompts you to choose one to grab:
+
+```text
+                Free GPUs on the interactive (devel) partitions
+  #   Partition    GPU type        Free   Availability
+  1   gpu_devel    h200               3   ████░░░░░░░░░░░░
+  2   gpu_devel    rtx_5000_ada       2   ░░░░░░░░░░░░░░░░
+Which GPU? [1-2, q to cancel] [1]:
+```
+
+Pick a number and it grabs exactly that GPU on that partition. Combine with
+`-g`/`-p` to pre-filter the list, `-a` to include every partition (not just the
+interactive ones), or `-y` to auto-pick the option with the most free GPUs.
+
+Options:
+
+| Flag | Meaning | Default |
+| --- | --- | --- |
+| `-g, --gpu TYPE` | GPU model (`h200`, `b200`, …) | any GPU |
+| `-n, --num N` | number of GPUs | `1` |
+| `-p, --partition NAME` | pin to one partition | any partition that has the GPU |
+| `-t, --time` | wall time: `6`, `2h`, `30m`, `6:00:00`, `1-00:00:00` | `6:00:00` |
+| `-c, --cpus N` | CPUs per task | `8` |
+| `-m, --mem` | memory: `32G`, `64G`, `500M`, `1T`, or `0` for all | `32G` |
+| `-A, --account` | charge account | (none) |
+| `-a, --all-partitions` | search every partition, not just interactive ones | |
+| `-f, --free` | list the free GPUs and pick one to grab | |
+| `--dry-run` | print the `salloc` command without running | |
+| `-y, --yes` | skip the confirmation prompt | |
+
+When you don't pin a partition, `ysu grab` targets the **interactive (`*devel`)
+partitions** — on Bouchet that's `gpu_devel`. Batch-only partitions such as
+`scavenge` or `priority_gpu` reject interactive `salloc` jobs with a QOS policy
+error, so they're excluded by default. Pass `-a/--all-partitions` to fan the
+request across every partition that can satisfy it (SLURM then grabs whichever
+GPU frees up first), or pin one with `-p`.
+
+If you ask for a GPU type or partition that doesn't exist (or a combination that
+can't work), it prints the real configurations you could pick from — try
+`ysu grab --list` to see them up front. `ysu alloc` is an alias for `ysu grab`.
 
 ## Python API
 

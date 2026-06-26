@@ -8,12 +8,14 @@ import typer
 from rich.console import Console, Group
 from rich.text import Text
 
-from . import __version__, render
+from . import __version__, alloc, render
+from .alloc import AllocError, AllocRequest
 from .events import clear_events, load_events
 from .monitor import run_dashboard
 from .slurm import (
     SlurmError,
     current_user,
+    exec_salloc,
     get_jobs,
     get_partition_names,
     get_partitions,
@@ -75,8 +77,9 @@ def main(
         console.print(render.jobs_table(jobs))
         console.print(
             Text(
-                "Tip: `ysu watch` for a live dashboard · `ysu gpus --free` for "
-                "open GPUs · `ysu jobs` for your job details.",
+                "Tip: `ysu grab` to grab a GPU · `ysu watch` for a live "
+                "dashboard · `ysu gpus --free` for open GPUs · `ysu jobs` for "
+                "your job details.",
                 style="dim italic",
             )
         )
@@ -152,6 +155,196 @@ def free_cmd(partition: Optional[str] = PartitionOpt) -> None:
         gpu_classes = gpu_inventory(partition)
         console.print(render.gpu_summary(gpu_classes))
         console.print(render.gpu_table(gpu_classes, free_only=True))
+
+    _guard(_run)
+
+
+@app.command("grab")
+def grab_cmd(
+    gpu: Optional[str] = typer.Option(
+        None, "--gpu", "-g",
+        help="GPU model, e.g. h200. Default: any available GPU.",
+        metavar="TYPE",
+    ),
+    num: int = typer.Option(
+        alloc.DEFAULT_COUNT, "--num", "-n", min=1, help="How many GPUs to request."
+    ),
+    partition: Optional[str] = typer.Option(
+        None, "--partition", "-p",
+        help="Pin to one partition. Default: any that has the GPU.",
+        metavar="NAME",
+    ),
+    time: str = typer.Option(
+        alloc.DEFAULT_TIME, "--time", "-t",
+        help="Wall time: 6, 2h, 30m, 6:00:00 or 1-00:00:00.",
+    ),
+    cpus: int = typer.Option(
+        alloc.DEFAULT_CPUS, "--cpus", "-c", min=1, help="CPUs per task."
+    ),
+    mem: str = typer.Option(
+        alloc.DEFAULT_MEM, "--mem", "-m",
+        help="Memory: 32G, 64G, 500M, 1T, or 0 for all on the node.",
+    ),
+    account: Optional[str] = typer.Option(
+        None, "--account", "-A", help="Charge the allocation to this account."
+    ),
+    all_partitions: bool = typer.Option(
+        False, "--all-partitions", "-a",
+        help="Search every partition, not just interactive (devel) ones.",
+    ),
+    free: bool = typer.Option(
+        False, "--free", "-f",
+        help="List the free GPUs and let you pick one to grab.",
+    ),
+    list_options: bool = typer.Option(
+        False, "--list", "-l",
+        help="List every allocatable GPU configuration and exit.",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show the salloc command without running it."
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip the confirmation prompt."
+    ),
+) -> None:
+    """Grab an interactive GPU with [bold]salloc[/] — validated, with suggestions.
+
+    Examples:
+
+    [cyan]ysu grab[/]                 grab any free GPU for 6h, 8 CPUs, 32G
+
+    [cyan]ysu grab -g h200 -n 2[/]    two H200s
+
+    [cyan]ysu grab -p gpu_devel -t 2h -m 64G[/]
+
+    [cyan]ysu grab --free[/]          list the free GPUs and pick one
+
+    [cyan]ysu grab --list[/]          see everything you could ask for
+    """
+
+    def _resolve(req: AllocRequest, options) -> "alloc.ResolvedRequest | None":
+        try:
+            return alloc.resolve_request(req, options)
+        except AllocError as exc:
+            console.print(render.alloc_suggestions(str(exc), exc.options or options))
+            raise typer.Exit(code=1)
+
+    def _launch(resolved: "alloc.ResolvedRequest") -> None:
+        args = alloc.build_salloc_args(resolved)
+        console.print(render.alloc_preview(resolved, args))
+        if dry_run:
+            console.print(Text("Dry run — nothing launched.", style="dim italic"))
+            return
+        if not yes and not typer.confirm("Launch this allocation?", default=True):
+            console.print("[dim]Cancelled.[/]")
+            return
+        console.print(Text("Requesting allocation… (Ctrl-C to give up)", style="dim"))
+        exec_salloc(args)
+
+    def _pick_free(options) -> "alloc.GpuOption | None":
+        # Validate any pre-filters so a typo still gets a helpful suggestion.
+        if gpu and gpu not in options.gpu_types:
+            raise AllocError(
+                f"Unknown GPU type {gpu!r}. "
+                f"Available types: {', '.join(options.gpu_types)}.",
+                options,
+            )
+        if partition and partition not in options.partitions:
+            raise AllocError(
+                f"Unknown GPU partition {partition!r}. "
+                f"GPU partitions: {', '.join(options.partitions)}.",
+                options,
+            )
+        items = alloc.free_options(
+            options, gpu_type=gpu, partition=partition, all_partitions=all_partitions,
+        )
+        if partition:
+            scope = f"partition {partition}"
+        elif all_partitions:
+            scope = "any partition"
+        else:
+            scope = "the interactive (devel) partitions"
+        if not items:
+            console.print(
+                Text(f"No free GPUs on {scope} right now.", style="yellow")
+            )
+            console.print(
+                Text(
+                    "Try `ysu grab --list` to see everything, or `-a` to include "
+                    "all partitions.",
+                    style="dim italic",
+                )
+            )
+            return None
+
+        console.print(render.header("grab"))
+        console.print(render.free_gpu_menu(items, title=f"Free GPUs on {scope}"))
+
+        if yes:
+            return items[0]  # non-interactive: take the most-free option
+        while True:
+            raw = typer.prompt(
+                f"Which GPU? [1-{len(items)}, q to cancel]", default="1"
+            ).strip().lower()
+            if raw in {"q", "quit", "cancel"}:
+                console.print("[dim]Cancelled.[/]")
+                return None
+            try:
+                idx = int(raw)
+            except ValueError:
+                console.print("[red]Please enter a number.[/]")
+                continue
+            if 1 <= idx <= len(items):
+                return items[idx - 1]
+            console.print(f"[red]Pick a number between 1 and {len(items)}.[/]")
+
+    def _run() -> None:
+        options = alloc.gpu_options(gpu_inventory())
+
+        if list_options:
+            console.print(render.header("grab"))
+            console.print(render.alloc_options_table(options))
+            console.print(
+                Text(
+                    "Tip: `ysu grab` alone grabs any free GPU · `ysu grab --free` "
+                    "to pick from what's free · add `-g <type>`, `-n <count>`, "
+                    "`-t <time>`, `-m <mem>` to narrow it down.",
+                    style="dim italic",
+                )
+            )
+            return
+
+        if free:
+            try:
+                choice = _pick_free(options)
+            except AllocError as exc:
+                console.print(render.alloc_suggestions(str(exc), exc.options or options))
+                raise typer.Exit(code=1)
+            if choice is None:
+                return
+            request = AllocRequest(
+                partition=choice.partition,
+                gpu_type=choice.gpu_type,
+                count=num,
+                time=time,
+                cpus=cpus,
+                mem=mem,
+                account=account,
+            )
+            _launch(_resolve(request, options))
+            return
+
+        request = AllocRequest(
+            partition=partition,
+            gpu_type=gpu,
+            count=num,
+            time=time,
+            cpus=cpus,
+            mem=mem,
+            account=account,
+            all_partitions=all_partitions,
+        )
+        _launch(_resolve(request, options))
 
     _guard(_run)
 
@@ -238,6 +431,10 @@ def log_cmd(
         console.print("[green]Event log cleared.[/]")
         return
     console.print(render.events_table(load_events(limit=limit), limit=limit))
+
+
+# `ysu alloc` is an alias for `ysu grab`.
+app.command("alloc", hidden=True)(grab_cmd)
 
 
 if __name__ == "__main__":  # pragma: no cover
