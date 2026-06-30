@@ -18,6 +18,7 @@ ysu partitions      # partition breakdown (nodes / CPU / memory / GPUs)
 ysu list-partitions # just the partition names
 ysu jobs            # your jobs: GPUs, source dir, log files, time left
 ysu watch           # live dashboard + terminal bell on job start/finish
+ysu watch -I        # interactive: scroll your jobs and cancel one
 ysu log             # persistent log of job start/finish events
 ```
 
@@ -130,6 +131,26 @@ Disable the bell while watching:
 ```bash
 ysu watch --no-bell
 ```
+
+### Interactive watch (scroll + cancel)
+
+`ysu watch --interactive` (or `-I`) turns the dashboard into a keyboard-driven
+view: scroll through your jobs and cancel the highlighted one.
+
+```bash
+ysu watch --interactive
+```
+
+| Key | Action |
+| --- | --- |
+| `↑`/`↓` or `k`/`j` | move the cursor between jobs |
+| `g` / `G` | jump to the top / bottom |
+| `c` (or `x`) | cancel the highlighted job (asks `y/N` first) |
+| `q` or `Ctrl-C` | quit |
+
+You can only cancel your **own** jobs — selecting someone else's (in `--all`
+view) and pressing `c` just shows a notice. Interactive mode needs a real
+terminal; if stdin isn't a TTY it falls back to the normal read-only watch.
 
 ## Grab a GPU (`ysu grab`)
 

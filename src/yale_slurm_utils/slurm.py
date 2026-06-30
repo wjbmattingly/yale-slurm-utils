@@ -85,6 +85,14 @@ def current_user() -> str:
         return os.environ.get("USER", "")
 
 
+def cancel_job(job_id: str) -> None:
+    """Cancel a job with ``scancel``. Raises :class:`SlurmError` on failure."""
+    job_id = (job_id or "").strip()
+    if not job_id:
+        raise SlurmError("No job id to cancel.")
+    _run(["scancel", job_id])
+
+
 def exec_salloc(args: list[str]) -> None:  # pragma: no cover - replaces process
     """Launch an interactive ``salloc`` allocation.
 

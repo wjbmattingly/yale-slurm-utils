@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from yale_slurm_utils.events import append_events, load_events, make_event
 from yale_slurm_utils.models import Job
-from yale_slurm_utils.monitor import _snapshot, detect_transitions
+from yale_slurm_utils.monitor import _snapshot, can_cancel, detect_transitions
 
 
 def _job(job_id: str, state: str) -> Job:
@@ -43,6 +43,15 @@ def test_no_change_no_events():
 def test_first_snapshot_is_silent():
     # No prior state -> never spam events on startup.
     assert detect_transitions(None, _snapshot([_job("1", "RUNNING")])) == []
+
+
+def test_can_cancel_only_your_own_jobs():
+    mine = Job(job_id="1", partition="gpu", name="t", user="me", state="RUNNING")
+    theirs = Job(job_id="2", partition="gpu", name="t", user="someone", state="RUNNING")
+    assert can_cancel(mine, "me") is True
+    assert can_cancel(theirs, "me") is False
+    # Unknown "me" (e.g. couldn't resolve user) doesn't block.
+    assert can_cancel(theirs, None) is True
 
 
 def test_log_roundtrip(tmp_path):

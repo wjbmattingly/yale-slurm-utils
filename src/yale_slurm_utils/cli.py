@@ -402,8 +402,16 @@ def watch_cmd(
     no_bell: bool = typer.Option(
         False, "--no-bell", help="Disable the terminal bell on job events."
     ),
+    interactive: bool = typer.Option(
+        False, "--interactive", "-I",
+        help="Scroll through your jobs with the keyboard and cancel the selected one.",
+    ),
 ) -> None:
-    """Live dashboard with a [bold]bell[/] on job start/finish + an event log."""
+    """Live dashboard with a [bold]bell[/] on job start/finish + an event log.
+
+    With [cyan]--interactive[/] use ↑/↓ (or j/k) to move through your jobs and
+    [bold]c[/] to cancel the highlighted one (with a confirmation).
+    """
     target = "*" if all_users else user
     try:
         run_dashboard(
@@ -412,6 +420,7 @@ def watch_cmd(
             interval=interval,
             bell=not no_bell,
             console=console,
+            interactive=interactive,
         )
     except KeyboardInterrupt:
         console.print("[dim]Stopped watching.[/]")

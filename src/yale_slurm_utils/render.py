@@ -265,6 +265,65 @@ def jobs_table(jobs: list[Job], now: datetime | None = None) -> Table:
     return table
 
 
+def jobs_selectable(
+    jobs: list[Job],
+    selected: int,
+    now: datetime | None = None,
+    me: str | None = None,
+    title: str = "Your jobs",
+) -> Table:
+    """A jobs table with a movable cursor on the ``selected`` row.
+
+    Used by ``ysu watch --interactive`` so you can scroll through your jobs and
+    cancel the highlighted one.
+    """
+    now = now or datetime.now()
+    table = Table(
+        title=title,
+        title_style="bold",
+        header_style="bold white",
+        border_style=theme.YALE_BLUE_BRIGHT,
+        expand=True,
+        row_styles=["", "on grey11"],
+    )
+    table.add_column("Job ID", no_wrap=True)
+    table.add_column("Name", no_wrap=True, max_width=22)
+    table.add_column("Partition", no_wrap=True)
+    table.add_column("State", no_wrap=True)
+    table.add_column("GPUs", no_wrap=True)
+    table.add_column("CPUs", justify="right", no_wrap=True)
+    table.add_column("Memory", justify="right", no_wrap=True)
+    table.add_column("Node", no_wrap=True)
+    table.add_column("Progress", justify="left")
+    table.add_column("Time left", justify="right", no_wrap=True)
+
+    if not jobs:
+        table.add_row(Text("No jobs right now.", style="dim"), *[""] * 9)
+        return table
+
+    for i, job in enumerate(jobs):
+        is_sel = i == selected
+        # Fold the cursor into the Job ID cell so it can't be squeezed away.
+        job_id = Text()
+        job_id.append("❯ " if is_sel else "  ", style="bold cyan")
+        job_id.append(job.job_id, style="bold")
+        where = job.nodelist or (job.reason or "-")
+        table.add_row(
+            job_id,
+            job.name or "(unnamed)",
+            job.partition,
+            Text(job.state, style=theme.state_style(job.state)),
+            theme.gpu_chiplets(job.gpu_types) if job.gpu_total else Text("-", "dim"),
+            str(job.num_cpus),
+            humanize_mb(job.mem_mb),
+            where,
+            _progress_cell(job, now),
+            _time_left_cell(job, now),
+            style="on grey30" if is_sel else None,
+        )
+    return table
+
+
 def _progress_cell(job: Job, now: datetime) -> Text:
     pct = job.percent_elapsed(now)
     if pct is None:
