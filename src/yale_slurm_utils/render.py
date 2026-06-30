@@ -236,12 +236,14 @@ def jobs_table(jobs: list[Job], now: datetime | None = None) -> Table:
     table.add_column("Partition", no_wrap=True)
     table.add_column("State", no_wrap=True)
     table.add_column("GPUs", no_wrap=True)
+    table.add_column("CPUs", justify="right", no_wrap=True)
+    table.add_column("Memory", justify="right", no_wrap=True)
     table.add_column("Node", no_wrap=True)
     table.add_column("Progress", justify="left")
     table.add_column("Time left", justify="right", no_wrap=True)
 
     if not jobs:
-        table.add_row(Text("No jobs.", style="dim"), "", "", "", "", "", "", "")
+        table.add_row(*[Text("No jobs.", style="dim")] + [""] * 9)
         return table
 
     for job in jobs:
@@ -254,6 +256,8 @@ def jobs_table(jobs: list[Job], now: datetime | None = None) -> Table:
             job.partition,
             Text(job.state, style=theme.state_style(job.state)),
             theme.gpu_chiplets(job.gpu_types) if job.gpu_total else Text("-", "dim"),
+            str(job.num_cpus),
+            humanize_mb(job.mem_mb),
             where,
             progress,
             time_left,
@@ -297,7 +301,10 @@ def job_panel(job: Job, now: datetime | None = None) -> Panel:
     )
     if job.gpu_total:
         grid.add_row("GPUs", theme.gpu_chiplets(job.gpu_types))
-    grid.add_row("Resources", f"{job.num_nodes} node(s) · {job.num_cpus} CPU(s)")
+    resources = f"{job.num_nodes} node(s) · {job.num_cpus} CPU(s)"
+    if job.mem_mb:
+        resources += f" · {humanize_mb(job.mem_mb)} mem"
+    grid.add_row("Resources", resources)
 
     if job.is_pending:
         grid.add_row("Reason", Text(job.reason or "-", style="bright_yellow"))
@@ -483,15 +490,17 @@ def events_table(events: list[JobEvent], limit: int = 12) -> Table:
     )
     table.add_column("Time", no_wrap=True, style="dim")
     table.add_column("Event", no_wrap=True)
-    table.add_column("Job", no_wrap=True)
+    table.add_column("Job ID", no_wrap=True, style="bold")
     table.add_column("Name", overflow="ellipsis", max_width=24)
     table.add_column("User", no_wrap=True)
     table.add_column("Partition", no_wrap=True)
     table.add_column("GPUs", no_wrap=True)
+    table.add_column("CPUs", justify="right", no_wrap=True)
+    table.add_column("Memory", justify="right", no_wrap=True)
 
     recent = events[-limit:]
     if not recent:
-        table.add_row(Text("No events recorded yet.", style="dim"), "", "", "", "", "", "")
+        table.add_row(*[Text("No events recorded yet.", style="dim")] + [""] * 8)
         return table
 
     for event in reversed(recent):
@@ -507,5 +516,7 @@ def events_table(events: list[JobEvent], limit: int = 12) -> Table:
             event.user,
             event.partition,
             event.gpu_label,
+            str(event.cpus) if event.cpus else "-",
+            humanize_mb(event.mem_mb),
         )
     return table

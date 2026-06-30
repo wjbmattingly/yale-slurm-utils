@@ -209,8 +209,12 @@ for job in get_jobs():  # your jobs
 
 - `sinfo -N -O '...'` gives per-node state, CPU/memory and `Gres`/`GresUsed`
   (parsed into per-GPU-type totals and usage).
-- `squeue -O '...'` gives jobs with `tres-alloc` (parsed for `gres/gpu:<type>`),
-  plus `WorkDir`, `STDOUT`, `STDERR` and `Command`.
+- `squeue -O '...'` gives jobs with `tres-alloc` (parsed for `gres/gpu:<type>`
+  and `mem=` so CPUs and memory show up alongside GPUs), plus `WorkDir`,
+  `STDOUT`, `STDERR` and `Command`.
+- Log paths from SLURM are filename *templates* (`transcribe_%A_%a.out`); the
+  `%j`/`%A`/`%a`/`%x`/`%u`/`%N` tokens are resolved from the job's own fields so
+  you see a real path instead of the pattern.
 - All output uses a `|`-delimited format to stay robust against wide values.
 - The event log is stored as JSON lines under
   `$XDG_STATE_HOME/yale-slurm-utils/events.jsonl`

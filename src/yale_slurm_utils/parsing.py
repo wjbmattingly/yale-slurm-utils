@@ -118,6 +118,17 @@ def parse_gres(value: str | None) -> dict[str, int]:
 # ``cpu=1,mem=180G,node=1,billing=15,gres/gpu=1,gres/gpu:rtx_5000_ada=1``
 _TYPED_GPU_RE = re.compile(r"gres/gpu:(?P<type>[a-zA-Z0-9_.]+)=(?P<count>\d+)")
 _TOTAL_GPU_RE = re.compile(r"gres/gpu=(?P<count>\d+)")
+_TRES_MEM_RE = re.compile(r"(?:^|,)mem=(?P<mem>[\d.]+[kmgtpKMGTP]?)")
+
+
+def parse_tres_mem(tres: str | None) -> int | None:
+    """Pull the ``mem=`` value out of a TRES string, in megabytes."""
+    if is_empty(tres):
+        return None
+    match = _TRES_MEM_RE.search(tres)
+    if not match:
+        return None
+    return parse_mem_mb(match.group("mem"))
 
 
 def parse_tres_gpus(tres: str | None) -> tuple[int, dict[str, int]]:
@@ -170,6 +181,55 @@ def humanize_seconds(seconds: int | None) -> str:
     if hours:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     return f"{minutes:02d}:{secs:02d}"
+
+
+def first_node(nodelist: str | None) -> str | None:
+    """Best-effort first hostname from a SLURM nodelist (``c[01-03]`` -> ``c01``)."""
+    if is_empty(nodelist):
+        return None
+    value = nodelist.strip()
+    head, bracket, rest = value.partition("[")
+    if not bracket:
+        # Plain comma list or single host.
+        return value.split(",")[0]
+    first = re.split(r"[,\-]", rest)[0]
+    return f"{head}{first}"
+
+
+def expand_slurm_filename(
+    template: str | None,
+    *,
+    job_id: str | None = None,
+    job_name: str | None = None,
+    user: str | None = None,
+    nodelist: str | None = None,
+) -> str | None:
+    """Resolve SLURM log-path patterns (``%j``, ``%A``, ``%a``, ``%x`` ...).
+
+    ``squeue`` reports ``StdOut``/``StdErr`` as the configured template, so a
+    pending array job shows e.g. ``transcribe_%A_%a.out``. We substitute the
+    pieces we know so the user sees a real (or near-real) path. Unknown tokens
+    are left untouched.
+    """
+    if is_empty(template):
+        return clean(template)
+
+    array_master, _, array_task = (job_id or "").partition("_")
+    node = first_node(nodelist)
+
+    replacements = {
+        "%%": "%",
+        "%j": job_id or "%j",
+        "%A": array_master or job_id or "%A",
+        "%a": array_task or "%a",
+        "%x": job_name or "%x",
+        "%u": user or "%u",
+        "%N": node or "%N",
+        "%n": "0",
+        "%t": "0",
+    }
+    pattern = re.compile("|".join(re.escape(k) for k in replacements))
+    return pattern.sub(lambda m: replacements[m.group(0)], template.strip())
 
 
 def humanize_mb(mb: int | None) -> str:

@@ -183,6 +183,7 @@ class Job:
     state: str
     num_nodes: int = 1
     num_cpus: int = 1
+    mem_mb: int | None = None
     nodelist: str | None = None
     reason: str | None = None
     submit_time: datetime | None = None

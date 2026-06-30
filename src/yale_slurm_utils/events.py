@@ -24,6 +24,9 @@ class JobEvent:
     partition: str
     gpu_label: str
     timestamp: str  # ISO 8601
+    # Added later; defaults keep older log lines loadable.
+    cpus: int = 0
+    mem_mb: int | None = None
 
     @property
     def when(self) -> datetime:
@@ -51,6 +54,8 @@ def make_event(kind: str, job: Job, when: datetime | None = None) -> JobEvent:
         partition=job.partition,
         gpu_label=job.gpu_label,
         timestamp=(when or datetime.now()).isoformat(timespec="seconds"),
+        cpus=job.num_cpus,
+        mem_mb=job.mem_mb,
     )
 
 

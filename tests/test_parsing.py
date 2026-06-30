@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from yale_slurm_utils.parsing import (
+    expand_slurm_filename,
+    first_node,
     humanize_seconds,
     parse_cpu_state,
     parse_gres,
@@ -12,6 +14,7 @@ from yale_slurm_utils.parsing import (
     parse_slurm_time,
     parse_timestamp,
     parse_tres_gpus,
+    parse_tres_mem,
 )
 
 
@@ -59,6 +62,44 @@ def test_parse_tres_gpus():
     total, typed = parse_tres_gpus("cpu=2,gres/gpu=4")
     assert total == 4
     assert typed == {"gpu": 4}
+
+
+def test_parse_tres_mem():
+    assert parse_tres_mem("cpu=1,mem=180G,node=1,billing=15") == 180 * 1024
+    assert parse_tres_mem("cpu=6,mem=64000M,node=1") == 64000
+    assert parse_tres_mem("cpu=2,node=1") is None
+    assert parse_tres_mem("(null)") is None
+
+
+def test_first_node():
+    assert first_node("c01n04") == "c01n04"
+    assert first_node("gpu[01-03]") == "gpu01"
+    assert first_node("c[01,05,09]") == "c01"
+    assert first_node("a01,a02") == "a01"
+    assert first_node("(null)") is None
+
+
+def test_expand_slurm_filename():
+    # Array job: %A -> master, %a -> task, resolved from a "12345_6" id.
+    assert (
+        expand_slurm_filename(
+            "transcribe_%A_%a.out", job_id="12345_6", job_name="transcribe"
+        )
+        == "transcribe_12345_6.out"
+    )
+    # Plain job with %j and %x.
+    assert (
+        expand_slurm_filename("%x-%j.log", job_id="9999", job_name="train")
+        == "train-9999.log"
+    )
+    # %N resolves from the nodelist; %% stays a literal percent.
+    assert (
+        expand_slurm_filename("o_%N_%%.txt", job_id="5", nodelist="gpu[02-04]")
+        == "o_gpu02_%.txt"
+    )
+    # Unknown values leave the token in place rather than inventing data.
+    assert expand_slurm_filename("j_%u.out", job_id="5") == "j_%u.out"
+    assert expand_slurm_filename("(null)") is None
 
 
 def test_parse_cpu_state():

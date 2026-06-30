@@ -16,12 +16,14 @@ from collections import defaultdict
 from .models import GpuClass, Job, Node, Partition
 from .parsing import (
     clean,
+    expand_slurm_filename,
     parse_cpu_state,
     parse_gres,
     parse_mem_mb,
     parse_slurm_time,
     parse_timestamp,
     parse_tres_gpus,
+    parse_tres_mem,
 )
 
 # Field is "<Name>:|" -> SLURM appends a literal "|" after each value, and we
@@ -256,15 +258,26 @@ def _build_job(row: list[str]) -> Job:
         except (TypeError, ValueError):
             return default
 
+    job_id = job_id.strip()
+    name = name.strip()
+    user = user.strip()
+    nodes = clean(nodelist)
+
+    def _resolve(path: str) -> str | None:
+        return expand_slurm_filename(
+            path, job_id=job_id, job_name=name, user=user, nodelist=nodes
+        )
+
     return Job(
-        job_id=job_id.strip(),
+        job_id=job_id,
         partition=part.strip(),
-        name=name.strip(),
-        user=user.strip(),
+        name=name,
+        user=user,
         state=state.strip(),
         num_nodes=_int(num_nodes, 1),
         num_cpus=_int(num_cpus, 1),
-        nodelist=clean(nodelist),
+        mem_mb=parse_tres_mem(tres),
+        nodelist=nodes,
         reason=clean(reason),
         submit_time=parse_timestamp(submit),
         start_time=parse_timestamp(start),
@@ -274,8 +287,8 @@ def _build_job(row: list[str]) -> Job:
         gpu_total=gpu_total,
         gpu_types=gpu_types,
         workdir=clean(workdir),
-        stdout=clean(stdout),
-        stderr=clean(stderr),
+        stdout=_resolve(stdout),
+        stderr=_resolve(stderr),
         command=clean(command),
     )
 

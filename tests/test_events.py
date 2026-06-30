@@ -8,7 +8,10 @@ from yale_slurm_utils.monitor import _snapshot, detect_transitions
 
 
 def _job(job_id: str, state: str) -> Job:
-    return Job(job_id=job_id, partition="gpu_h200", name="t", user="me", state=state)
+    return Job(
+        job_id=job_id, partition="gpu_h200", name="t", user="me", state=state,
+        num_cpus=8, mem_mb=180 * 1024,
+    )
 
 
 def test_pending_to_running_emits_started():
@@ -50,3 +53,19 @@ def test_log_roundtrip(tmp_path):
     assert len(loaded) == 1
     assert loaded[0].job_id == "9"
     assert loaded[0].kind == "started"
+    assert loaded[0].cpus == 8
+    assert loaded[0].mem_mb == 180 * 1024
+
+
+def test_log_loads_legacy_lines_without_cpu_mem(tmp_path):
+    # Lines written before cpus/mem were tracked must still load.
+    path = tmp_path / "events.jsonl"
+    path.write_text(
+        '{"kind": "started", "job_id": "7", "name": "old", "user": "me", '
+        '"partition": "gpu", "gpu_label": "1x gpu", "timestamp": "2026-01-01T00:00:00"}\n'
+    )
+    loaded = load_events(path=path)
+    assert len(loaded) == 1
+    assert loaded[0].job_id == "7"
+    assert loaded[0].cpus == 0
+    assert loaded[0].mem_mb is None
