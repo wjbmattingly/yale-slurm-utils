@@ -80,7 +80,8 @@ class WatchApp(App):
     #pool { height: 6; }
     #body { height: 1fr; }
     #left-scroll, #right-scroll { width: 1fr; }
-    #right-scroll { border-left: solid $panel; }
+    #right-scroll { height: 1fr; }
+    #body #right-scroll { border-left: solid $panel; }
     #events-scroll { height: 14; }
     #footer { height: 2; }
     VerticalScroll:focus { border-left: solid $accent; }
@@ -128,9 +129,13 @@ class WatchApp(App):
     def compose(self) -> ComposeResult:
         yield Static(id="header")
         yield Static(id="pool")
-        with Horizontal(id="body"):
-            yield VerticalScroll(Static(id="left"), id="left-scroll")
+        if self.interactive:
+            # Interactive is focused on managing your own jobs — no users table.
             yield VerticalScroll(Static(id="right"), id="right-scroll")
+        else:
+            with Horizontal(id="body"):
+                yield VerticalScroll(Static(id="left"), id="left-scroll")
+                yield VerticalScroll(Static(id="right"), id="right-scroll")
         yield VerticalScroll(Static(id="events"), id="events-scroll")
         yield Static(id="footer")
 
@@ -149,7 +154,8 @@ class WatchApp(App):
         try:
             jobs = get_jobs(user=self.user, partition=self.partition)
             gpus = gpu_inventory(self.partition)
-            usage = gpu_usage_by_user(self.partition)
+            # The per-user table is only shown in read-only mode.
+            usage = {} if self.interactive else gpu_usage_by_user(self.partition)
             err = None
         except SlurmError as exc:
             jobs, gpus, usage, err = [], [], {}, str(exc)
@@ -226,7 +232,21 @@ class WatchApp(App):
         self.query_one("#header", Static).update(render.header(self._subtitle()))
         self.query_one("#pool", Static).update(render.gpu_summary(self.gpus))
 
-        if self.err:
+        if self.interactive:
+            # Just your jobs, full width, with a movable cursor.
+            if self.err:
+                self.query_one("#right", Static).update(
+                    Panel(Text(self.err, style="red"), title="SLURM error",
+                          border_style="red")
+                )
+            else:
+                title = "Your jobs" if self.user != "*" else "Jobs"
+                self.query_one("#right", Static).update(
+                    render.jobs_selectable(
+                        self.jobs, self.sel_idx, now, me=self.me, title=title
+                    )
+                )
+        elif self.err:
             self.query_one("#left", Static).update(
                 Panel(Text(self.err, style="red"), title="SLURM error",
                       border_style="red")
@@ -237,14 +257,7 @@ class WatchApp(App):
             self.query_one("#left", Static).update(
                 render.gpu_users_table(self.usage, me=users_me)
             )
-            if self.interactive:
-                title = "Your jobs" if self.user != "*" else "Jobs"
-                self.query_one("#right", Static).update(
-                    render.jobs_selectable(
-                        self.jobs, self.sel_idx, now, me=self.me, title=title
-                    )
-                )
-            elif self.user == "*":
+            if self.user == "*":
                 self.query_one("#right", Static).update(
                     render.jobs_table(self.jobs, now)
                 )
