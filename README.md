@@ -52,7 +52,7 @@ ysu log             # persistent log of job start/finish events
 
 ### YSU Dashboard
 
-![YSU Dashboard Screenshot](images/ysu-dashboard.jpg)
+![YSU Dashboard Screenshot](images/ysu-dashboard2.jpg)
 
 ### GPU Dashboard
 
@@ -184,8 +184,8 @@ ysu theme set auto             # go back to light/dark auto-detection
 ysu --theme light free         # use a theme for a single command only
 ```
 
-Built-in themes: `dark`, `light`, `solarized-dark`, `solarized-light`,
-`dracula`, `nord`, `gruvbox-dark`. Your choice is remembered in
+Built-in themes: `dark`, `yale` (Yale-blue + gold), `light`, `solarized-dark`,
+`solarized-light`, `dracula`, `nord`, `gruvbox-dark`. Your choice is remembered in
 `$XDG_CONFIG_HOME/yale-slurm-utils/config.json`.
 
 ### Your own themes (YAML)

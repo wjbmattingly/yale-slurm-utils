@@ -28,7 +28,10 @@ fi
 echo "Installing ysu from: $REPO_DIR"
 # --force makes this safe to re-run: it replaces any previous (or broken)
 # install rather than erroring out.
-uv tool install --force "$REPO_DIR"
+# --reinstall --refresh force a fresh build from the current source. Without
+# them, uv can reuse a cached wheel for the same version number and silently
+# install stale code when you've edited the source without bumping the version.
+uv tool install --force --reinstall --refresh "$REPO_DIR"
 
 # Make sure ~/.local/bin is on PATH in your shell profile. This is a no-op if
 # it is already configured.

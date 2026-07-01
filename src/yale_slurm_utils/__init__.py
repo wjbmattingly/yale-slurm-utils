@@ -9,7 +9,7 @@ framework for querying partitions, GPUs and jobs.
 
 from __future__ import annotations
 
-__version__ = "0.1.7"
+__version__ = "0.1.8"
 
 from .models import GpuClass, Job, Node, Partition  # noqa: E402
 from .slurm import (  # noqa: E402

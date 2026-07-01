@@ -86,6 +86,20 @@ def theme_from_dict(data: dict, name: str | None = None) -> Theme:
 # --------------------------------------------------------------------------- #
 BUILTIN_THEMES: dict[str, Theme] = {
     "dark": Theme(name="dark", mode="dark"),
+    "yale": Theme(
+        name="yale", mode="dark",
+        # Yale Blue branding with a brighter blue accent + gold highlights.
+        primary="#00356b", accent="#63aaff", heading="#eaf2ff",
+        border="#2f5c96", zebra="#0a1f38", selection="#13345c", bar_empty="#33455c",
+        idle="#7fd88f", mixed="#f6c85f", allocated="#ff6b6b", down="#5a6b82",
+        pending="#ffd45f", completed="#63aaff",
+        util_cool="#7fd88f", util_ok="#bcd35f", util_warm="#f6c85f", util_hot="#ff6b6b",
+        avail_none="#ff6b6b", avail_low="#f6c85f", avail_plenty="#7fd88f",
+        gpu_palette=[
+            "#63aaff", "#f6c85f", "#7fd88f", "#ff8fab",
+            "#b39ddb", "#4dd0e1", "#ffb74d", "#90caf9",
+        ],
+    ),
     "light": Theme(
         name="light",
         mode="light",
