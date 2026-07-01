@@ -25,9 +25,9 @@ CLUSTER_NAME = "Bouchet"
 # --------------------------------------------------------------------------- #
 def header(subtitle: str = "") -> Panel:
     title = Text(no_wrap=True)
-    title.append("Yale", style=f"bold {theme.YALE_BLUE_BRIGHT}")
-    title.append(" SLURM ", style="bold white")
-    title.append("Utils", style=f"bold {theme.YALE_BLUE_BRIGHT}")
+    title.append("Yale", style=f"bold {theme.accent()}")
+    title.append(" SLURM ", style=f"bold {theme.heading()}")
+    title.append("Utils", style=f"bold {theme.accent()}")
     title.append(f" · {CLUSTER_NAME}", style="dim")
     if subtitle:
         title.append(f" · {subtitle}", style="italic cyan")
@@ -37,7 +37,7 @@ def header(subtitle: str = "") -> Panel:
     line.add_column(justify="left", ratio=1, no_wrap=True)
     line.add_column(justify="right", no_wrap=True)
     line.add_row(title, Text(now, style="dim", no_wrap=True))
-    return Panel(line, border_style=theme.YALE_BLUE_BRIGHT, padding=(0, 1))
+    return Panel(line, border_style=theme.accent(), padding=(0, 1))
 
 
 # --------------------------------------------------------------------------- #
@@ -47,10 +47,10 @@ def partitions_table(partitions: list[Partition], gpu_only: bool = False) -> Tab
     table = Table(
         title="Partitions",
         title_style="bold",
-        header_style="bold white",
-        border_style="grey37",
+        header_style=f"bold {theme.heading()}",
+        border_style=theme.border(),
         expand=True,
-        row_styles=["", "on grey11"],
+        row_styles=theme.zebra_rows(),
     )
     table.add_column("Partition", style="bold", no_wrap=True)
     table.add_column("Nodes", justify="right")
@@ -115,10 +115,10 @@ def gpu_table(gpu_classes: list[GpuClass], free_only: bool = False) -> Table:
     table = Table(
         title=title,
         title_style="bold",
-        header_style="bold white",
-        border_style="grey37",
+        header_style=f"bold {theme.heading()}",
+        border_style=theme.border(),
         expand=True,
-        row_styles=["", "on grey11"],
+        row_styles=theme.zebra_rows(),
     )
     table.add_column("Partition", style="bold", no_wrap=True)
     table.add_column("GPU type", no_wrap=True)
@@ -187,7 +187,7 @@ def gpu_summary(gpu_classes: list[GpuClass]) -> Panel:
         Columns(cards, expand=False, equal=False),
         title="GPU pool (free / total)",
         title_align="left",
-        border_style="grey37",
+        border_style=theme.border(),
     )
 
 
@@ -195,10 +195,10 @@ def gpu_users_table(usage: dict[str, dict[str, int]], me: str | None = None) -> 
     table = Table(
         title="Who's using which GPUs",
         title_style="bold",
-        header_style="bold white",
-        border_style="grey37",
+        header_style=f"bold {theme.heading()}",
+        border_style=theme.border(),
         expand=True,
-        row_styles=["", "on grey11"],
+        row_styles=theme.zebra_rows(),
     )
     table.add_column("User", style="bold", no_wrap=True)
     table.add_column("Total", justify="right", no_wrap=True)
@@ -226,10 +226,10 @@ def jobs_table(jobs: list[Job], now: datetime | None = None) -> Table:
     table = Table(
         title="Jobs",
         title_style="bold",
-        header_style="bold white",
-        border_style="grey37",
+        header_style=f"bold {theme.heading()}",
+        border_style=theme.border(),
         expand=True,
-        row_styles=["", "on grey11"],
+        row_styles=theme.zebra_rows(),
     )
     table.add_column("Job ID", style="bold", no_wrap=True)
     table.add_column("Name", no_wrap=True, max_width=22)
@@ -281,10 +281,10 @@ def jobs_selectable(
     table = Table(
         title=title,
         title_style="bold",
-        header_style="bold white",
-        border_style=theme.YALE_BLUE_BRIGHT,
+        header_style=f"bold {theme.heading()}",
+        border_style=theme.accent(),
         expand=True,
-        row_styles=["", "on grey11"],
+        row_styles=theme.zebra_rows(),
     )
     table.add_column("Job ID", no_wrap=True)
     table.add_column("Name", no_wrap=True, max_width=22)
@@ -319,7 +319,7 @@ def jobs_selectable(
             where,
             _progress_cell(job, now),
             _time_left_cell(job, now),
-            style="on grey30" if is_sel else None,
+            style=theme.selection_style() if is_sel else None,
         )
     return table
 
@@ -353,7 +353,7 @@ def job_panel(job: Job, now: datetime | None = None) -> Panel:
     grid.add_column(style="dim", justify="right", no_wrap=True)
     grid.add_column(overflow="fold")
 
-    grid.add_row("Partition", Text(job.partition, style="white"))
+    grid.add_row("Partition", Text(job.partition, style=theme.heading()))
     grid.add_row(
         "State",
         Text(job.state, style=theme.state_style(job.state)),
@@ -394,7 +394,7 @@ def job_panel(job: Job, now: datetime | None = None) -> Panel:
     if job.workdir:
         grid.add_row("Work dir", Text(job.workdir, style="cyan"))
     if job.command:
-        grid.add_row("Command", Text(job.command, style="white"))
+        grid.add_row("Command", Text(job.command, style=theme.heading()))
     if job.stdout:
         grid.add_row("Log (out)", Text(job.stdout, style="green"))
     if job.stderr and job.stderr != job.stdout:
@@ -402,14 +402,14 @@ def job_panel(job: Job, now: datetime | None = None) -> Panel:
 
     title = Text()
     title.append(f"#{job.job_id}  ", style="bold")
-    title.append(job.name or "(unnamed)", style="bold white")
+    title.append(job.name or "(unnamed)", style=f"bold {theme.heading()}")
     border = theme.state_style(job.state)
     return Panel(grid, title=title, title_align="left", border_style=border)
 
 
 def jobs_detail(jobs: list[Job], now: datetime | None = None) -> RenderableType:
     if not jobs:
-        return Panel(Text("No jobs found.", style="dim"), border_style="grey37")
+        return Panel(Text("No jobs found.", style="dim"), border_style=theme.border())
     return Group(*[job_panel(job, now) for job in jobs])
 
 
@@ -417,7 +417,7 @@ def jobs_detail(jobs: list[Job], now: datetime | None = None) -> RenderableType:
 # Allocations (ysu grab)
 # --------------------------------------------------------------------------- #
 def _grab_command(option_partition: str, gpu_type: str) -> Text:
-    cmd = Text("ysu grab", style=theme.YALE_BLUE_BRIGHT)
+    cmd = Text("ysu grab", style=theme.accent())
     cmd.append(f" -g {gpu_type}", style="cyan")
     cmd.append(f" -p {option_partition}", style="cyan")
     return cmd
@@ -428,10 +428,10 @@ def alloc_options_table(options: GpuOptions) -> Table:
     table = Table(
         title="Allocatable GPUs",
         title_style="bold",
-        header_style="bold white",
-        border_style="grey37",
+        header_style=f"bold {theme.heading()}",
+        border_style=theme.border(),
         expand=True,
-        row_styles=["", "on grey11"],
+        row_styles=theme.zebra_rows(),
     )
     table.add_column("Partition", style="bold", no_wrap=True)
     table.add_column("GPU type", no_wrap=True)
@@ -465,10 +465,10 @@ def free_gpu_menu(items: list[GpuOption], title: str = "Free GPUs you can grab")
     table = Table(
         title=title,
         title_style="bold",
-        header_style="bold white",
-        border_style="grey37",
+        header_style=f"bold {theme.heading()}",
+        border_style=theme.border(),
         expand=True,
-        row_styles=["", "on grey11"],
+        row_styles=theme.zebra_rows(),
     )
     table.add_column("#", justify="right", style="bold", no_wrap=True)
     table.add_column("Partition", style="bold", no_wrap=True)
@@ -526,13 +526,13 @@ def alloc_preview(resolved: ResolvedRequest, args: list[str]) -> Panel:
     if resolved.account:
         grid.add_row("Account", resolved.account)
 
-    command = Text("salloc " + " ".join(args), style="bold white")
+    command = Text("salloc " + " ".join(args), style=f"bold {theme.heading()}")
     body = Group(grid, Text(), Text("Command:", style="dim"), command)
     return Panel(
         body,
         title=Text("Interactive GPU allocation", style="bold"),
         title_align="left",
-        border_style=theme.YALE_BLUE_BRIGHT,
+        border_style=theme.accent(),
     )
 
 
@@ -543,8 +543,8 @@ def events_table(events: list[JobEvent], limit: int = 12) -> Table:
     table = Table(
         title="Job event log",
         title_style="bold",
-        header_style="bold white",
-        border_style="grey37",
+        header_style=f"bold {theme.heading()}",
+        border_style=theme.border(),
         expand=True,
     )
     table.add_column("Time", no_wrap=True, style="dim")

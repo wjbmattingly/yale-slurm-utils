@@ -34,9 +34,13 @@ ysu log             # persistent log of job start/finish events
 - **Your jobs** — for each job: the GPUs allocated, the **working directory** the
   job was submitted from, the **log files** (`StdOut`/`StdErr`), the command, and
   the **time left** shown both as a percentage bar and a duration.
-- **Real-time watch** — a full-screen live dashboard that polls SLURM on an
-  interval, **rings the terminal bell** when one of your jobs starts or finishes,
-  and keeps a timestamped event log.
+- **Real-time watch** — a full-screen [Textual](https://textual.textualize.io/)
+  dashboard that polls SLURM on an interval, **rings the terminal bell** when one
+  of your jobs starts or finishes, and keeps a timestamped event log. Every table
+  is **scrollable** and you can **Tab** between them; with `--interactive` you can
+  scroll your jobs and cancel one.
+- **Themeable** — light/dark auto-detection plus built-in themes (`dracula`,
+  `nord`, `solarized`, ...) and your own YAML themes; see `ysu theme list`.
 - **Grab a GPU** — `ysu grab` wraps `salloc` to drop you into an interactive
   GPU session. By default it grabs **any** free GPU; narrow it with `-g h200`,
   `-n 2`, `-t 2h`, `-m 64G`. Mistype a GPU type or partition and it tells you
@@ -132,10 +136,25 @@ Disable the bell while watching:
 ysu watch --no-bell
 ```
 
+### The watch dashboard (Textual)
+
+`ysu watch` is a full-screen [Textual](https://textual.textualize.io/) app. Every
+table (GPU users, jobs, event log) is independently **scrollable**, and you can
+**Tab** between them:
+
+| Key | Action |
+| --- | --- |
+| `Tab` / `Shift-Tab` | move focus to the next / previous table |
+| `↑`/`↓`, `PgUp`/`PgDn`, mouse wheel | scroll the focused table |
+| `q` or `Ctrl-C` | quit |
+
+The app matches your terminal's light/dark background automatically and follows
+your chosen [theme](#themes).
+
 ### Interactive watch (scroll + cancel)
 
-`ysu watch --interactive` (or `-I`) turns the dashboard into a keyboard-driven
-view: scroll through your jobs and cancel the highlighted one.
+`ysu watch --interactive` (or `-I`) adds a movable cursor to your jobs table so
+you can select a job and cancel it:
 
 ```bash
 ysu watch --interactive
@@ -143,14 +162,59 @@ ysu watch --interactive
 
 | Key | Action |
 | --- | --- |
-| `↑`/`↓` or `k`/`j` | move the cursor between jobs |
-| `g` / `G` | jump to the top / bottom |
-| `c` (or `x`) | cancel the highlighted job (asks `y/N` first) |
+| `↑`/`↓` or `k`/`j` | move the cursor between jobs (when the jobs table is focused) |
+| `c` (or `x`) | cancel the highlighted job (asks first, keyboard or mouse) |
+| `Tab` | switch to another table (then arrows scroll it normally) |
 | `q` or `Ctrl-C` | quit |
 
 You can only cancel your **own** jobs — selecting someone else's (in `--all`
-view) and pressing `c` just shows a notice. Interactive mode needs a real
-terminal; if stdin isn't a TTY it falls back to the normal read-only watch.
+view) and pressing `c` just shows a notice.
+
+## Themes
+
+`ysu` ships several colour themes and, by default, auto-detects whether your
+terminal has a light or dark background (via `COLORFGBG` / an OSC 11 query) and
+picks a matching one.
+
+```bash
+ysu theme list                 # see all themes + a live preview swatch
+ysu theme show dracula         # preview a theme with sample tables
+ysu theme set nord             # switch and remember it
+ysu theme set auto             # go back to light/dark auto-detection
+ysu --theme light free         # use a theme for a single command only
+```
+
+Built-in themes: `dark`, `light`, `solarized-dark`, `solarized-light`,
+`dracula`, `nord`, `gruvbox-dark`. Your choice is remembered in
+`$XDG_CONFIG_HOME/yale-slurm-utils/config.json`.
+
+### Your own themes (YAML)
+
+```bash
+ysu theme path                 # prints the themes dir + a ready-to-copy example
+```
+
+Drop a `<name>.yaml` file in `~/.config/yale-slurm-utils/themes/` and select it
+with `ysu theme set <name>`. Only the keys you want to change are required — the
+rest inherit the dark defaults. Colours may be names (`bright_green`) or hex
+(`"#5aa2ff"`).
+
+```yaml
+# ~/.config/yale-slurm-utils/themes/midnight.yaml
+name: midnight
+mode: dark            # dark | light (also sets the app background)
+accent: "#5aa2ff"     # branding / focused borders
+heading: "white"
+border: "grey37"      # table borders
+zebra: "grey15"       # alternating row background
+selection: "grey30"   # highlighted (selected) row background
+idle: "green"
+allocated: "bright_red"
+pending: "bright_yellow"
+util_hot: "bright_red"
+avail_plenty: "bright_green"
+gpu_palette: ["bright_green", "bright_cyan", "bright_magenta", "bright_yellow"]
+```
 
 ## Grab a GPU (`ysu grab`)
 

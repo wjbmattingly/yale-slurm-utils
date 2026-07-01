@@ -1,6 +1,6 @@
 [project]
 name = "yale-slurm-utils"
-version = "0.1.6"
+dynamic = ["version"]
 description = "Beautifully formatted, real-time SLURM stats for the Yale Bouchet cluster (and any SLURM cluster)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,6 +17,8 @@ classifiers = [
 dependencies = [
     "rich>=13.7",
     "typer>=0.12",
+    "textual>=0.80",
+    "pyyaml>=6.0",
 ]
 
 [project.urls]
@@ -30,6 +32,9 @@ yale-slurm = "yale_slurm_utils.cli:app"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/yale_slurm_utils/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/yale_slurm_utils"]
