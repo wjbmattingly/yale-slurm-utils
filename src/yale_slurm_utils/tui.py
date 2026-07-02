@@ -95,6 +95,7 @@ class WatchApp(App):
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
+        Binding("r", "refresh", "Refresh"),
         Binding("tab", "focus_next", "Next table", show=False),
         Binding("shift+tab", "focus_previous", "Prev table", show=False),
     ]
@@ -104,17 +105,16 @@ class WatchApp(App):
         *,
         user: str | None,
         partition: str | None,
-        interval: int = 10,
         bell: bool = True,
         interactive: bool = False,
     ) -> None:
         super().__init__()
         self.user = user
         self.partition = partition
-        self.interval = max(2, interval)
         self._bell = bell
         self.interactive = interactive
         self.me = current_user() or None
+        self.updated_at: datetime | None = None
 
         self.jobs: list[Job] = []
         self.gpus: list = []
@@ -144,9 +144,15 @@ class WatchApp(App):
         self.theme = (
             "textual-light" if theme.active().mode == "light" else "textual-dark"
         )
+        # Single snapshot only. We deliberately do NOT poll on a timer: sampling
+        # SLURM (sinfo/squeue) on an interval loads the scheduler for everyone.
+        # The user refreshes on demand with `r` (or by re-running the command).
         self._poll()
-        self.set_interval(self.interval, self._poll)
-        self.set_interval(1.0, self.render_all)  # keep clock / time-left fresh
+
+    def action_refresh(self) -> None:
+        self._status = ("dim", "Refreshing…")
+        self.render_all()
+        self._poll()
 
     # -- data --------------------------------------------------------------- #
     @work(thread=True, exclusive=True)
@@ -171,6 +177,7 @@ class WatchApp(App):
                     self.bell()
         self._prev = curr
         self.jobs, self.gpus, self.usage, self.err = jobs, gpus, usage, err
+        self.updated_at = datetime.now()
         self._reconcile_selection()
         self.render_all()
 
@@ -187,13 +194,12 @@ class WatchApp(App):
         monitored = "all users" if self.user == "*" else (self.user or "you")
         if self.partition:
             monitored += f" · {self.partition}"
-        text = f"watching {monitored}"
+        text = f"snapshot · {monitored}"
         if self.interactive:
             text += " · interactive"
         return text
 
     def _footer_renderable(self) -> Text:
-        monitored = "all users" if self.user == "*" else (self.user or "you")
         if self.interactive:
             if self._status is not None:
                 kind, message = self._status
@@ -204,6 +210,7 @@ class WatchApp(App):
                 for key, label in (
                     ("↑/↓ or j/k", "select"),
                     ("c", "cancel"),
+                    ("r", "refresh"),
                     ("Tab", "switch table"),
                     ("q", "quit"),
                 ):
@@ -212,13 +219,13 @@ class WatchApp(App):
                     line.append(key, style="bold")
                     line.append(f" {label}", style="dim")
             return line
+        stamp = self.updated_at.strftime("%H:%M:%S") if self.updated_at else "—"
         line = Text(justify="center")
-        line.append("monitoring ", style="dim")
-        line.append(monitored, style="cyan")
-        line.append(f"  ·  refresh {self.interval}s  ·  bell ", style="dim")
-        line.append("on" if self._bell else "off",
-                    style="green" if self._bell else "red dim")
-        line.append("  ·  ", style="dim")
+        line.append("snapshot ", style="dim")
+        line.append(stamp, style="cyan")
+        line.append("  ·  no auto-refresh  ·  ", style="dim")
+        line.append("r", style="bold")
+        line.append(" refresh  ·  ", style="dim")
         line.append("Tab", style="bold")
         line.append(" switch table  ·  ", style="dim")
         line.append("q", style="bold")
@@ -354,7 +361,6 @@ def run_dashboard(
     *,
     user: str | None,
     partition: str | None,
-    interval: int = 10,
     bell: bool = True,
     console=None,  # accepted for API compatibility; Textual manages output
     interactive: bool = False,
@@ -362,7 +368,6 @@ def run_dashboard(
     WatchApp(
         user=user,
         partition=partition,
-        interval=interval,
         bell=bell,
         interactive=interactive,
     ).run()

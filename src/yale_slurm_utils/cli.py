@@ -396,25 +396,26 @@ def jobs_cmd(
 
 @app.command("watch")
 def watch_cmd(
-    interval: int = typer.Option(
-        10, "--interval", "-i", min=2, help="Refresh interval in seconds."
-    ),
     user: Optional[str] = typer.Option(
-        None, "--user", "-u", help="Monitor another user (default: you)."
+        None, "--user", "-u", help="Show another user's jobs (default: you)."
     ),
     all_users: bool = typer.Option(
-        False, "--all", "-a", help="Monitor all users' jobs for start/finish."
+        False, "--all", "-a", help="Show all users' jobs."
     ),
     partition: Optional[str] = PartitionOpt,
     no_bell: bool = typer.Option(
-        False, "--no-bell", help="Disable the terminal bell on job events."
+        False, "--no-bell", help="Disable the terminal bell when a refresh finds job events."
     ),
     interactive: bool = typer.Option(
         False, "--interactive", "-I",
         help="Scroll through your jobs with the keyboard and cancel the selected one.",
     ),
 ) -> None:
-    """Live dashboard with a [bold]bell[/] on job start/finish + an event log.
+    """Dashboard snapshot of the cluster — scroll, Tab between tables, [bold]r[/] to refresh.
+
+    To keep load off the SLURM scheduler this takes a [bold]single snapshot[/] and
+    does [bold]not[/] poll automatically. Press [bold]r[/] to refresh on demand
+    (or just re-run the command).
 
     With [cyan]--interactive[/] use ↑/↓ (or j/k) to move through your jobs and
     [bold]c[/] to cancel the highlighted one (with a confirmation).
@@ -424,7 +425,6 @@ def watch_cmd(
         run_dashboard(
             user=target,
             partition=partition,
-            interval=interval,
             bell=not no_bell,
             console=console,
             interactive=interactive,

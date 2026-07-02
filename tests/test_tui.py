@@ -30,7 +30,7 @@ def _patch(monkeypatch, jobs):
 
 def test_interactive_selection_moves(monkeypatch):
     _patch(monkeypatch, _sample_jobs())
-    app = tui.WatchApp(user="me", partition=None, interval=2,
+    app = tui.WatchApp(user="me", partition=None,
                        bell=False, interactive=True)
 
     async def scenario():
@@ -54,7 +54,7 @@ def test_cancel_others_job_is_blocked(monkeypatch):
     _patch(monkeypatch, jobs)
     cancelled = []
     monkeypatch.setattr(tui, "cancel_job", lambda jid: cancelled.append(jid))
-    app = tui.WatchApp(user="*", partition=None, interval=2,
+    app = tui.WatchApp(user="*", partition=None,
                        bell=False, interactive=True)
 
     async def scenario():
@@ -73,9 +73,37 @@ def test_cancel_others_job_is_blocked(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_no_auto_refresh_but_manual_refresh_works(monkeypatch):
+    calls = {"n": 0}
+    jobs = _sample_jobs()
+
+    def _get_jobs(**kw):
+        calls["n"] += 1
+        return list(jobs)
+
+    monkeypatch.setattr(tui, "get_jobs", _get_jobs)
+    monkeypatch.setattr(tui, "gpu_inventory", lambda p: [])
+    monkeypatch.setattr(tui, "gpu_usage_by_user", lambda p: {})
+    monkeypatch.setattr(tui, "current_user", lambda: "me")
+    app = tui.WatchApp(user="me", partition=None, bell=False, interactive=False)
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+            # One initial snapshot, no timer-driven polls.
+            assert calls["n"] == 1
+            await pilot.press("r")
+            await pilot.pause()
+            await pilot.pause()
+            assert calls["n"] == 2
+
+    asyncio.run(scenario())
+
+
 def test_readonly_mode_ignores_selection_keys(monkeypatch):
     _patch(monkeypatch, _sample_jobs())
-    app = tui.WatchApp(user="me", partition=None, interval=2,
+    app = tui.WatchApp(user="me", partition=None,
                        bell=False, interactive=False)
 
     async def scenario():

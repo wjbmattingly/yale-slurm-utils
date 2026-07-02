@@ -34,11 +34,11 @@ ysu log             # persistent log of job start/finish events
 - **Your jobs** — for each job: the GPUs allocated, the **working directory** the
   job was submitted from, the **log files** (`StdOut`/`StdErr`), the command, and
   the **time left** shown both as a percentage bar and a duration.
-- **Real-time watch** — a full-screen [Textual](https://textual.textualize.io/)
-  dashboard that polls SLURM on an interval, **rings the terminal bell** when one
-  of your jobs starts or finishes, and keeps a timestamped event log. Every table
-  is **scrollable** and you can **Tab** between them; with `--interactive` you can
-  scroll your jobs and cancel one.
+- **Watch dashboard** — a full-screen [Textual](https://textual.textualize.io/)
+  snapshot of the cluster. Every table is **scrollable** and you can **Tab**
+  between them; with `--interactive` you can scroll your jobs and cancel one. It
+  deliberately **doesn't poll on a timer** (to spare the SLURM scheduler) — press
+  `r` to refresh on demand.
 - **Themeable** — light/dark auto-detection plus built-in themes (`dracula`,
   `nord`, `solarized`, ...) and your own YAML themes; see `ysu theme list`.
 - **Grab a GPU** — `ysu grab` wraps `salloc` to drop you into an interactive
@@ -117,10 +117,10 @@ uv run python -m yale_slurm_utils gpus
 
 ## Examples
 
-Watch only the H200 partition, refresh every 5 seconds:
+Watch the H200 partition (a snapshot; press `r` in the app to refresh):
 
 ```bash
-ysu watch --partition gpu_h200 --interval 5
+ysu watch --partition gpu_h200
 ```
 
 See another user's jobs, or all jobs in a partition as a compact table:
@@ -128,12 +128,6 @@ See another user's jobs, or all jobs in a partition as a compact table:
 ```bash
 ysu jobs --user abc123
 ysu jobs --all --partition gpu_b200 --table
-```
-
-Disable the bell while watching:
-
-```bash
-ysu watch --no-bell
 ```
 
 ### The watch dashboard (Textual)
@@ -146,15 +140,21 @@ table (GPU users, jobs, event log) is independently **scrollable**, and you can
 | --- | --- |
 | `Tab` / `Shift-Tab` | move focus to the next / previous table |
 | `↑`/`↓`, `PgUp`/`PgDn`, mouse wheel | scroll the focused table |
+| `r` | refresh (take a new snapshot) |
 | `q` or `Ctrl-C` | quit |
+
+> **No automatic polling.** To keep load off the SLURM scheduler, `ysu watch`
+> takes a **single snapshot** and does **not** poll on a timer. Refresh on demand
+> with `r`, or just re-run the command. Given typical queue turnaround this is
+> plenty, and it avoids hammering `sinfo`/`squeue` for everyone on the cluster.
 
 The app matches your terminal's light/dark background automatically and follows
 your chosen [theme](#themes).
 
 ### Interactive watch (scroll + cancel)
 
-`ysu watch --interactive` (or `-I`) adds a movable cursor to your jobs table so
-you can select a job and cancel it:
+`ysu watch --interactive` (or `-I`) shows **just your jobs**, full width, with a
+movable cursor so you can select a job and cancel it:
 
 ```bash
 ysu watch --interactive
@@ -164,6 +164,7 @@ ysu watch --interactive
 | --- | --- |
 | `↑`/`↓` or `k`/`j` | move the cursor between jobs (when the jobs table is focused) |
 | `c` (or `x`) | cancel the highlighted job (asks first, keyboard or mouse) |
+| `r` | refresh (take a new snapshot) |
 | `Tab` | switch to another table (then arrows scroll it normally) |
 | `q` or `Ctrl-C` | quit |
 
