@@ -119,6 +119,7 @@ def parse_gres(value: str | None) -> dict[str, int]:
 _TYPED_GPU_RE = re.compile(r"gres/gpu:(?P<type>[a-zA-Z0-9_.]+)=(?P<count>\d+)")
 _TOTAL_GPU_RE = re.compile(r"gres/gpu=(?P<count>\d+)")
 _TRES_MEM_RE = re.compile(r"(?:^|,)mem=(?P<mem>[\d.]+[kmgtpKMGTP]?)")
+_TRES_CPU_RE = re.compile(r"(?:^|,)cpu=(?P<cpu>\d+)")
 
 
 def parse_tres_mem(tres: str | None) -> int | None:
@@ -129,6 +130,14 @@ def parse_tres_mem(tres: str | None) -> int | None:
     if not match:
         return None
     return parse_mem_mb(match.group("mem"))
+
+
+def parse_tres_cpu(tres: str | None) -> int:
+    """Pull the ``cpu=`` count out of a TRES string (0 if absent)."""
+    if is_empty(tres):
+        return 0
+    match = _TRES_CPU_RE.search(tres)
+    return int(match.group("cpu")) if match else 0
 
 
 def parse_tres_gpus(tres: str | None) -> tuple[int, dict[str, int]]:
@@ -230,6 +239,92 @@ def expand_slurm_filename(
     }
     pattern = re.compile("|".join(re.escape(k) for k in replacements))
     return pattern.sub(lambda m: replacements[m.group(0)], template.strip())
+
+
+_DOWN_TOKENS = ("down", "drain", "fail", "maint", "unk", "reserved", "invalid")
+
+
+def state_is_down(state: str | None) -> bool:
+    """True when a node state means it can't currently accept new work."""
+    s = (state or "").lower().rstrip("*~#$@+-")
+    return any(token in s for token in _DOWN_TOKENS)
+
+
+def _map_gpu_used(
+    total_types: dict[str, int],
+    used_total: int,
+    used_types: dict[str, int],
+) -> dict[str, int]:
+    """Attribute a node's *used* GPUs to concrete GPU types.
+
+    ``AllocTRES`` usually only reports an untyped ``gres/gpu=N`` total, while
+    ``CfgTRES`` carries the real type (e.g. ``gres/gpu:b200=8``). Since a node
+    almost always has a single GPU model, we map the untyped used count onto it.
+    """
+    if not total_types:
+        return {}
+    matched = {t: c for t, c in used_types.items() if t in total_types}
+    if matched:
+        return matched
+    if used_total <= 0:
+        return {}
+    if len(total_types) == 1:
+        return {next(iter(total_types)): used_total}
+    # Rare: several GPU models on one node but only an untyped used total. Put
+    # it on the first type alphabetically as a best effort.
+    return {sorted(total_types)[0]: used_total}
+
+
+def _scontrol_field(block: str, key: str) -> str:
+    match = re.search(rf"(?:^|\s){re.escape(key)}=(\S*)", block)
+    return match.group(1) if match else ""
+
+
+def iter_scontrol_nodes(output: str | None) -> list[dict]:
+    """Parse ``scontrol -d -o show node`` output into per-node records.
+
+    Returns one dict per *physical* node (deduplicated) with keys: ``name``,
+    ``state``, ``partitions`` (list), ``cpus_total``/``cpus_alloc``,
+    ``mem_total_mb``/``mem_alloc_mb`` and ``gpus_total``/``gpus_used`` dicts.
+
+    Using ``CfgTRES`` (configured) and ``AllocTRES`` (allocated) is the reliable
+    way to tally GPUs: it counts each node once regardless of how many
+    (overlapping) partitions it belongs to. Works with both the one-line
+    (``-o``) and multi-line ``scontrol show node`` formats.
+
+    With thanks to Charles Sindelar (YCRC) for the ``scontrol``-based approach.
+    """
+    if is_empty(output):
+        return []
+    nodes: list[dict] = []
+    for block in re.split(r"(?m)^(?=NodeName=)", output):
+        if "NodeName=" not in block:
+            continue
+        name = _scontrol_field(block, "NodeName")
+        if not name:
+            continue
+        partitions_raw = _scontrol_field(block, "Partitions")
+        partitions = [p for p in partitions_raw.split(",") if p]
+        cfg = _scontrol_field(block, "CfgTRES")
+        alloc = _scontrol_field(block, "AllocTRES")
+
+        _, cfg_types = parse_tres_gpus(cfg)
+        used_total, used_types = parse_tres_gpus(alloc)
+
+        nodes.append(
+            {
+                "name": name,
+                "state": _scontrol_field(block, "State"),
+                "partitions": partitions,
+                "cpus_total": parse_tres_cpu(cfg),
+                "cpus_alloc": parse_tres_cpu(alloc),
+                "mem_total_mb": parse_tres_mem(cfg),
+                "mem_alloc_mb": parse_tres_mem(alloc),
+                "gpus_total": cfg_types,
+                "gpus_used": _map_gpu_used(cfg_types, used_total, used_types),
+            }
+        )
+    return nodes
 
 
 def humanize_mb(mb: int | None) -> str:

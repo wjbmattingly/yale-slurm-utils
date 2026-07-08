@@ -17,29 +17,17 @@ from .models import GpuClass, Job, Node, Partition
 from .parsing import (
     clean,
     expand_slurm_filename,
-    parse_cpu_state,
-    parse_gres,
-    parse_mem_mb,
+    iter_scontrol_nodes,
     parse_slurm_time,
     parse_timestamp,
     parse_tres_gpus,
     parse_tres_mem,
+    state_is_down,
 )
 
 # Field is "<Name>:|" -> SLURM appends a literal "|" after each value, and we
 # separate fields with ",". This avoids width truncation entirely.
 _SEP = "|"
-
-_SINFO_FIELDS = [
-    "Partition",
-    "NodeHost",
-    "StateLong",
-    "CPUsState",
-    "Memory",
-    "FreeMem",
-    "Gres",
-    "GresUsed",
-]
 
 _SQUEUE_FIELDS = [
     "JobID",
@@ -159,32 +147,52 @@ def _split_rows(output: str, n_fields: int) -> list[list[str]]:
 # --------------------------------------------------------------------------- #
 # Nodes / partitions
 # --------------------------------------------------------------------------- #
-def get_nodes(partition: str | None = None) -> list[Node]:
-    """Return one :class:`Node` per (node, partition) pairing."""
-    args = ["sinfo", "-h", "-N", "-O", _format(_SINFO_FIELDS)]
-    if partition:
-        args += ["-p", partition]
-    output = _run(args)
+def _scontrol_nodes() -> list[dict]:
+    """Authoritative per-physical-node inventory via ``scontrol``.
 
+    ``scontrol -d -o show node`` lists each node exactly once (with its
+    ``CfgTRES``/``AllocTRES`` and the set of partitions it belongs to), so we
+    can tally CPUs/memory/GPUs without the double-counting that plagues
+    per-partition ``sinfo`` output when partitions overlap.
+    """
+    output = _run(["scontrol", "-d", "-o", "show", "node"])
+    return iter_scontrol_nodes(output)
+
+
+def _node_from_scontrol(pn: dict, partition: str) -> Node:
+    total = pn["cpus_total"]
+    alloc = pn["cpus_alloc"]
+    mem_total = pn["mem_total_mb"]
+    mem_alloc = pn["mem_alloc_mb"] or 0
+    mem_free = (mem_total - mem_alloc) if mem_total is not None else None
+    return Node(
+        name=pn["name"],
+        partition=partition,
+        state=pn["state"],
+        cpus_alloc=alloc,
+        cpus_idle=max(total - alloc, 0),
+        cpus_other=0,
+        cpus_total=total,
+        mem_total_mb=mem_total,
+        mem_free_mb=mem_free,
+        gpus_total=dict(pn["gpus_total"]),
+        gpus_used=dict(pn["gpus_used"]),
+    )
+
+
+def get_nodes(partition: str | None = None) -> list[Node]:
+    """Return one :class:`Node` per (node, partition) pairing.
+
+    A physical node is reported once for each partition it belongs to (so the
+    per-partition views are complete), but every instance carries that node's
+    real, node-level resource counts.
+    """
     nodes: list[Node] = []
-    for row in _split_rows(output, len(_SINFO_FIELDS)):
-        part, host, state, cpu_state, mem, free_mem, gres, gres_used = row
-        alloc, idle, other, total = parse_cpu_state(cpu_state)
-        nodes.append(
-            Node(
-                name=host.strip(),
-                partition=part.strip(),
-                state=state.strip(),
-                cpus_alloc=alloc,
-                cpus_idle=idle,
-                cpus_other=other,
-                cpus_total=total,
-                mem_total_mb=parse_mem_mb(mem),
-                mem_free_mb=parse_mem_mb(free_mem),
-                gpus_total=parse_gres(gres),
-                gpus_used=parse_gres(gres_used),
-            )
-        )
+    for pn in _scontrol_nodes():
+        for part in pn["partitions"]:
+            if partition and part != partition:
+                continue
+            nodes.append(_node_from_scontrol(pn, part))
     return nodes
 
 
@@ -214,8 +222,23 @@ def get_partition_names(include_default_marker: bool = False) -> list[str]:
     return sorted(set(names))
 
 
+def _accumulate(gc: GpuClass, total: int, used: int, unavailable: bool) -> None:
+    gc.total += total
+    gc.used += used
+    gc.nodes_total += 1
+    if unavailable:
+        gc.nodes_unavailable += 1
+        gc.unavailable_gpus += max(total - used, 0)
+
+
 def gpu_inventory(partition: str | None = None) -> list[GpuClass]:
-    """Aggregate GPU availability per (partition, gpu_type)."""
+    """Aggregate GPU availability per (partition, gpu_type).
+
+    Each node is counted once *within* each partition it belongs to, so a given
+    row (e.g. ``gpu_b200`` / ``b200``) reflects the true capacity of that
+    partition. Note that summing rows across partitions would double-count
+    physical GPUs — use :func:`gpu_pool_inventory` for cluster-wide totals.
+    """
     classes: dict[tuple[str, str], GpuClass] = {}
     for node in get_nodes(partition):
         unavailable = node.is_down
@@ -225,12 +248,30 @@ def gpu_inventory(partition: str | None = None) -> list[GpuClass]:
             if gc is None:
                 gc = GpuClass(gpu_type=gpu_type, partition=node.partition)
                 classes[key] = gc
-            gc.total += total
-            gc.used += node.gpus_used.get(gpu_type, 0)
-            gc.nodes_total += 1
-            if unavailable:
-                gc.nodes_unavailable += 1
+            _accumulate(gc, total, node.gpus_used.get(gpu_type, 0), unavailable)
     return sorted(classes.values(), key=lambda g: (g.partition, g.gpu_type))
+
+
+def gpu_pool_inventory(partition: str | None = None) -> list[GpuClass]:
+    """Cluster-wide GPU totals per type, counting each physical node once.
+
+    Unlike :func:`gpu_inventory`, this deduplicates nodes that live in several
+    overlapping partitions, so the "GPU pool" totals reflect the real number of
+    physical cards. Restrict to a ``partition`` to pool just that partition's
+    nodes.
+    """
+    classes: dict[str, GpuClass] = {}
+    for pn in _scontrol_nodes():
+        if partition and partition not in pn["partitions"]:
+            continue
+        unavailable = state_is_down(pn["state"])
+        for gpu_type, total in pn["gpus_total"].items():
+            gc = classes.get(gpu_type)
+            if gc is None:
+                gc = GpuClass(gpu_type=gpu_type, partition=partition or "*")
+                classes[gpu_type] = gc
+            _accumulate(gc, total, pn["gpus_used"].get(gpu_type, 0), unavailable)
+    return sorted(classes.values(), key=lambda g: g.gpu_type)
 
 
 # --------------------------------------------------------------------------- #

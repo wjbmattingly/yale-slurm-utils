@@ -20,6 +20,7 @@ from .slurm import (
     get_partition_names,
     get_partitions,
     gpu_inventory,
+    gpu_pool_inventory,
     gpu_usage_by_user,
 )
 
@@ -76,10 +77,10 @@ def main(
 
     def _run() -> None:
         partitions = get_partitions()
-        gpu_classes = gpu_inventory()
+        pool = gpu_pool_inventory()
         jobs = get_jobs()
         console.print(render.header("overview"))
-        console.print(render.gpu_summary(gpu_classes))
+        console.print(render.gpu_summary(pool))
         console.print(render.partitions_table(partitions))
         console.print(render.jobs_table(jobs))
         console.print(
@@ -145,7 +146,8 @@ def gpus_cmd(
 
     def _run() -> None:
         gpu_classes = gpu_inventory(partition)
-        renderables = [render.gpu_summary(gpu_classes), render.gpu_table(gpu_classes, free_only=free)]
+        pool = gpu_pool_inventory(partition)
+        renderables = [render.gpu_summary(pool), render.gpu_table(gpu_classes, free_only=free)]
         if users:
             usage = gpu_usage_by_user(partition)
             renderables.append(render.gpu_users_table(usage, me=current_user()))
@@ -160,7 +162,7 @@ def free_cmd(partition: Optional[str] = PartitionOpt) -> None:
 
     def _run() -> None:
         gpu_classes = gpu_inventory(partition)
-        console.print(render.gpu_summary(gpu_classes))
+        console.print(render.gpu_summary(gpu_pool_inventory(partition)))
         console.print(render.gpu_table(gpu_classes, free_only=True))
 
     _guard(_run)

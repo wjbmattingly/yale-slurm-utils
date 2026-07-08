@@ -6,6 +6,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from .parsing import state_is_down
+
 
 @dataclass
 class Node:
@@ -48,11 +50,7 @@ class Node:
 
     @property
     def is_down(self) -> bool:
-        s = self.state.lower().rstrip("*~#$@+-")
-        return any(
-            token in s
-            for token in ("down", "drain", "fail", "maint", "unk", "reserved")
-        )
+        return state_is_down(self.state)
 
 
 @dataclass
@@ -65,14 +63,22 @@ class GpuClass:
     used: int = 0
     nodes_total: int = 0
     nodes_unavailable: int = 0
+    # GPUs that physically exist but sit on down/drained/maintenance nodes and
+    # aren't allocated — they can't actually be grabbed, so they aren't "free".
+    unavailable_gpus: int = 0
+
+    @property
+    def available(self) -> int:
+        """Total GPUs on healthy (allocatable) nodes."""
+        return max(self.total - self.unavailable_gpus, 0)
 
     @property
     def free(self) -> int:
-        return max(self.total - self.used, 0)
+        return max(self.available - self.used, 0)
 
     @property
     def util_pct(self) -> float:
-        return (self.used / self.total * 100.0) if self.total else 0.0
+        return (self.used / self.available * 100.0) if self.available else 0.0
 
 
 @dataclass

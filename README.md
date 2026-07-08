@@ -61,8 +61,8 @@ ysu log             # persistent log of job start/finish events
 
 ## Requirements
 
-- Run it on a machine with the SLURM client tools (`sinfo`, `squeue`) on `PATH`,
-  i.e. a Bouchet login node.
+- Run it on a machine with the SLURM client tools (`scontrol`, `sinfo`,
+  `squeue`) on `PATH`, i.e. a Bouchet login node.
 - Python ≥ 3.10.
 
 ## Install once, use anywhere (recommended on HPC)
@@ -293,8 +293,14 @@ for job in get_jobs():  # your jobs
 
 ## How it works
 
-- `sinfo -N -O '...'` gives per-node state, CPU/memory and `Gres`/`GresUsed`
-  (parsed into per-GPU-type totals and usage).
+- `scontrol -d -o show node` is the source of truth for node/GPU counts. Each
+  physical node is parsed **once** from its `CfgTRES` (configured) and
+  `AllocTRES` (allocated), and attributed to the partitions in its
+  `Partitions=` list. This avoids double-counting GPUs across the many
+  overlapping partitions a node belongs to (e.g. a `b200` node in `gpu`,
+  `gpu_b200` and `gpu_devel`). The **GPU pool** totals dedupe by node, and GPUs
+  on down/drained/maintenance nodes are treated as unavailable rather than free.
+  (Approach courtesy of Charles Sindelar, YCRC.)
 - `squeue -O '...'` gives jobs with `tres-alloc` (parsed for `gres/gpu:<type>`
   and `mem=` so CPUs and memory show up alongside GPUs), plus `WorkDir`,
   `STDOUT`, `STDERR` and `Command`.

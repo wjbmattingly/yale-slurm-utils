@@ -9,7 +9,7 @@ framework for querying partitions, GPUs and jobs.
 
 from __future__ import annotations
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 from .models import GpuClass, Job, Node, Partition  # noqa: E402
 from .slurm import (  # noqa: E402
@@ -18,6 +18,7 @@ from .slurm import (  # noqa: E402
     get_nodes,
     get_partition_names,
     gpu_inventory,
+    gpu_pool_inventory,
 )
 
 __all__ = [
@@ -31,4 +32,5 @@ __all__ = [
     "get_nodes",
     "get_partition_names",
     "gpu_inventory",
+    "gpu_pool_inventory",
 ]

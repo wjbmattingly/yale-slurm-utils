@@ -28,7 +28,7 @@ from .slurm import (
     cancel_job,
     current_user,
     get_jobs,
-    gpu_inventory,
+    gpu_pool_inventory,
     gpu_usage_by_user,
 )
 
@@ -159,7 +159,7 @@ class WatchApp(App):
     def _poll(self) -> None:
         try:
             jobs = get_jobs(user=self.user, partition=self.partition)
-            gpus = gpu_inventory(self.partition)
+            gpus = gpu_pool_inventory(self.partition)
             # The per-user table is only shown in read-only mode.
             usage = {} if self.interactive else gpu_usage_by_user(self.partition)
             err = None

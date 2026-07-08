@@ -23,7 +23,7 @@ def _sample_jobs():
 
 def _patch(monkeypatch, jobs):
     monkeypatch.setattr(tui, "get_jobs", lambda **kw: list(jobs))
-    monkeypatch.setattr(tui, "gpu_inventory", lambda p: [])
+    monkeypatch.setattr(tui, "gpu_pool_inventory", lambda p: [])
     monkeypatch.setattr(tui, "gpu_usage_by_user", lambda p: {})
     monkeypatch.setattr(tui, "current_user", lambda: "me")
 
@@ -82,7 +82,7 @@ def test_no_auto_refresh_but_manual_refresh_works(monkeypatch):
         return list(jobs)
 
     monkeypatch.setattr(tui, "get_jobs", _get_jobs)
-    monkeypatch.setattr(tui, "gpu_inventory", lambda p: [])
+    monkeypatch.setattr(tui, "gpu_pool_inventory", lambda p: [])
     monkeypatch.setattr(tui, "gpu_usage_by_user", lambda p: {})
     monkeypatch.setattr(tui, "current_user", lambda: "me")
     app = tui.WatchApp(user="me", partition=None, bell=False, interactive=False)

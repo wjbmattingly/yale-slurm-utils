@@ -8,13 +8,16 @@ from yale_slurm_utils.parsing import (
     expand_slurm_filename,
     first_node,
     humanize_seconds,
+    iter_scontrol_nodes,
     parse_cpu_state,
     parse_gres,
     parse_mem_mb,
     parse_slurm_time,
     parse_timestamp,
+    parse_tres_cpu,
     parse_tres_gpus,
     parse_tres_mem,
+    state_is_down,
 )
 
 
@@ -111,3 +114,54 @@ def test_humanize_seconds():
     assert humanize_seconds(None) == "∞"
     assert humanize_seconds(0) == "00:00"
     assert humanize_seconds(90061) == "1d 01:01"
+
+
+def test_parse_tres_cpu():
+    assert parse_tres_cpu("cpu=64,mem=1000G,gres/gpu=8") == 64
+    assert parse_tres_cpu("") == 0
+    assert parse_tres_cpu("mem=8G") == 0
+
+
+def test_state_is_down():
+    assert state_is_down("DOWN")
+    assert state_is_down("MIXED+DRAIN")
+    assert state_is_down("MAINT")
+    assert not state_is_down("IDLE")
+    assert not state_is_down("ALLOCATED")
+    assert not state_is_down("MIXED")
+
+
+# A trimmed `scontrol -d -o show node` sample: one fully-allocated b200 node in
+# three overlapping partitions, and one b200 node in maintenance (nothing
+# allocated). AllocTRES only carries an *untyped* gres/gpu total.
+_SCONTROL_SAMPLE = (
+    "NodeName=c01n01 CPUAlloc=64 CPUTot=64 State=ALLOCATED "
+    "Partitions=gpu,gpu_b200,gpu_devel "
+    "CfgTRES=cpu=64,mem=1000G,billing=64,gres/gpu=8,gres/gpu:b200=8 "
+    "AllocTRES=cpu=64,mem=800G,gres/gpu=8\n"
+    "NodeName=c01n08 CPUAlloc=0 CPUTot=64 State=MAINT "
+    "Partitions=gpu,gpu_b200 "
+    "CfgTRES=cpu=64,mem=1000G,billing=64,gres/gpu=8,gres/gpu:b200=8 "
+    "AllocTRES=\n"
+)
+
+
+def test_iter_scontrol_nodes():
+    nodes = iter_scontrol_nodes(_SCONTROL_SAMPLE)
+    assert len(nodes) == 2
+
+    n1 = nodes[0]
+    assert n1["name"] == "c01n01"
+    assert n1["partitions"] == ["gpu", "gpu_b200", "gpu_devel"]
+    assert n1["cpus_total"] == 64 and n1["cpus_alloc"] == 64
+    assert n1["gpus_total"] == {"b200": 8}
+    # Untyped AllocTRES total is mapped onto the node's single GPU model.
+    assert n1["gpus_used"] == {"b200": 8}
+
+    n2 = nodes[1]
+    assert n2["name"] == "c01n08"
+    assert n2["state"] == "MAINT"
+    assert n2["gpus_total"] == {"b200": 8}
+    assert n2["gpus_used"] == {}  # empty AllocTRES
+
+    assert iter_scontrol_nodes("") == []
